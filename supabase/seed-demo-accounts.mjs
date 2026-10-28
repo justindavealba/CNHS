@@ -1,6 +1,5 @@
-// One-time script: creates the two demo accounts (matching the old
-// hardcoded DEMO_ADMIN / DEMO_STUDENT credentials) as real Supabase Auth
-// users, plus their profile rows. Run with: node supabase/seed-demo-accounts.mjs
+// One-time script: creates demo accounts as real Supabase Auth users, plus
+// their profile rows. Run with: node supabase/seed-demo-accounts.mjs
 // Requires: schema.sql already run, and "Confirm email" turned off in
 // Authentication > Sign In / Up (otherwise signUp() won't return a session
 // and the profile insert will be skipped).
@@ -45,5 +44,36 @@ async function seedStudent() {
   await supabase.auth.signOut();
 }
 
+async function seedTemporaryStudent() {
+  const email = "temp.student@cnhs.edu.ph";
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password: "TempStudent123!",
+  });
+  if (error) {
+    console.error("Temporary student signUp failed:", error.message);
+    return;
+  }
+  if (!data.session) {
+    console.error("No session after temporary student signUp — 'Confirm email' is probably still ON. Turn it off in Authentication > Sign In / Up, then re-run this script.");
+    return;
+  }
+
+  const { error: insertError } = await supabase.from("students").insert({
+    id: data.user.id,
+    name: "Temporary Demo Student",
+    email,
+    age: 14,
+    sex: "",
+    grade: "Grade 8",
+    section: "Rizal",
+    approved: true,
+  });
+  if (insertError) console.error("Temporary student profile insert failed:", insertError.message);
+  else console.log("Temporary student account ready:", email);
+  await supabase.auth.signOut();
+}
+
 await seedAdmin();
 await seedStudent();
+await seedTemporaryStudent();

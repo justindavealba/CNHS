@@ -362,6 +362,21 @@ export async function addGradeSection({ grade, section }) {
   return { success: true, section: data };
 }
 
+export async function updateGradeSection(id, section, grade) {
+  const trimmed = (section || "").trim();
+  if (!trimmed) return { success: false, error: "Section name is required." };
+
+  const { data: existing, error: checkError } = await supabase
+    .from("grade_sections").select("id").eq("grade", grade).ilike("section", trimmed).neq("id", id);
+  if (checkError) return { success: false, error: checkError.message };
+  if (existing && existing.length > 0) return { success: false, error: `"${trimmed}" already exists under ${grade}.` };
+
+  const { data, error } = await supabase
+    .from("grade_sections").update({ section: trimmed }).eq("id", id).select().single();
+  if (error) return { success: false, error: error.message };
+  return { success: true, section: data };
+}
+
 export async function deleteGradeSection(id) {
   const { error } = await supabase.from("grade_sections").delete().eq("id", id);
   if (error) throw error;

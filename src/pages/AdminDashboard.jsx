@@ -28,7 +28,7 @@ import {
   getAwarenessContent, addAwarenessContent, updateAwarenessContent, deleteAwarenessContent,
   getAdminNotifications, markAdminNotifRead, markAllAdminNotifRead,
   LOCATION_META, getCustomLocations, addCustomLocation, deleteCustomLocation,
-  getGradeSections, addGradeSection, deleteGradeSection,
+  getGradeSections, addGradeSection, updateGradeSection, deleteGradeSection,
   getStudentAccounts, approveStudentAccount, declineStudentAccount,
   getUnconfirmedSignups, resendConfirmationEmail,
   downloadCSV, downloadTextReport, getAnalyticsData,
@@ -120,6 +120,44 @@ const TYPE_COLORS = {
 };
 
 const PRIORITY_ACCENT = { High: "#ef4444", Medium: "#f59e0b", Low: "#16a34a" };
+const EXPORT_INCIDENT_TYPES = ["Physical", "Verbal", "Cyber", "Social", "Property", "Others"];
+const EXPORT_STATUSES = ["Pending", "Under Investigation", "Resolved"];
+
+function nextExportSelection(selected, value, options) {
+  const next = selected.length === 0
+    ? options.filter((option) => option !== value)
+    : selected.includes(value)
+      ? selected.filter((option) => option !== value)
+      : [...selected, value];
+  return next.length === options.length ? [] : next;
+}
+
+function ExportChecklist({ title, options, selected, setSelected, className = "" }) {
+  return (
+    <>
+      <div className="analytics-export-filter-heading">
+        <span>{title}</span>
+        <button type="button" onClick={() => setSelected([])}>All</button>
+      </div>
+      {options.length > 0 ? (
+        <div className={`analytics-export-checklist ${className}`}>
+          {options.map((option) => (
+            <label key={option}>
+              <input
+                type="checkbox"
+                checked={selected.length === 0 || selected.includes(option)}
+                onChange={() => setSelected((current) => nextExportSelection(current, option, options))}
+              />
+              <span>{option}</span>
+            </label>
+          ))}
+        </div>
+      ) : (
+        <p className="analytics-export-empty">No values available</p>
+      )}
+    </>
+  );
+}
 
 function getLocationCounts(reports, customLocations = []) {
   const counts = {};
@@ -174,6 +212,8 @@ export default function AdminDashboard() {
   // Evidence lightbox
   const [lightboxSrc, setLightboxSrc] = useState(null);
   const [conferenceViewItem, setConferenceViewItem] = useState(null);
+  const [conferencePanelHidden, setConferencePanelHidden] = useState(false);
+  const [conferencePanelPinned, setConferencePanelPinned] = useState(false);
 
   // Incident Type Breakdown pagination
   const TYPE_BREAKDOWN_PAGE_SIZE = 4;
@@ -199,6 +239,13 @@ export default function AdminDashboard() {
   const [mfStatus,  setMfStatus]  = useState("All");
   const [mfMonth,   setMfMonth]   = useState("All");
   const [mfYear,    setMfYear]    = useState("All");
+  const [exportTypes, setExportTypes] = useState(EXPORT_INCIDENT_TYPES);
+  const [exportStatuses, setExportStatuses] = useState(EXPORT_STATUSES);
+  const [exportGradeFilter, setExportGradeFilter] = useState([]);
+  const [exportGenderFilter, setExportGenderFilter] = useState([]);
+  const [exportSectionFilter, setExportSectionFilter] = useState([]);
+  const [exportMonthFilter, setExportMonthFilter] = useState([]);
+  const [exportYearFilter, setExportYearFilter] = useState([]);
   const [exportMenuOpen,       setExportMenuOpen]        = useState(false);
   const exportMenuRef = useRef(null);
   const chartCanvasRef = useRef(null);
@@ -219,6 +266,8 @@ export default function AdminDashboard() {
   // Grade & Section management panel
   const [sectionMgmtGrade, setSectionMgmtGrade] = useState("Grade 7");
   const [newSectionName,   setNewSectionName]   = useState("");
+  const [editingSectionId, setEditingSectionId] = useState(null);
+  const [editingSectionName, setEditingSectionName] = useState("");
 
   // Live data
   const [incidents,        setIncidents]        = useState([]);
@@ -233,6 +282,34 @@ export default function AdminDashboard() {
 
   const profileRef = useRef(null);
   const notifRef   = useRef(null);
+  const adminContentRef = useRef(null);
+
+  useEffect(() => {
+    if (activeTab !== "dashboard" || conferencePanelPinned) return undefined;
+
+    const scrollContainer = adminContentRef.current;
+    if (!scrollContainer) return undefined;
+
+    let previousScrollTop = scrollContainer.scrollTop;
+    const handleScroll = () => {
+      const currentScrollTop = scrollContainer.scrollTop;
+      if (window.innerWidth <= 1100) {
+        setConferencePanelHidden(false);
+      } else if (currentScrollTop <= 80) {
+        setConferencePanelHidden(false);
+      } else if (Math.abs(currentScrollTop - previousScrollTop) > 5) {
+        setConferencePanelHidden(currentScrollTop > previousScrollTop);
+      }
+      previousScrollTop = currentScrollTop;
+    };
+
+    scrollContainer.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("resize", handleScroll);
+    return () => {
+      scrollContainer.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", handleScroll);
+    };
+  }, [activeTab, conferencePanelPinned]);
 
   // Poll every 2 s — only update state (and trigger a re-render) when the
   // underlying data actually changed, so charts don't reset/re-animate every tick.
@@ -323,6 +400,8 @@ export default function AdminDashboard() {
   const topLocation    = locationSorted[0]?.[0] || null;
 
   // Multi-filter computed
+  const allGrades   = [...new Set(incidents.filter(r => !r.isAnonymous && r.reporterGrade).map(r => r.reporterGrade))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const allGenders  = [...new Set(incidents.filter(r => !r.isAnonymous && r.reporterSex).map(r => r.reporterSex))].sort();
   const allSections = [...new Set(incidents.filter(r=>!r.isAnonymous && r.reporterSection).map(r=>r.reporterSection))].sort();
   const allYears    = [...new Set(incidents.filter(r=>r.date).map(r=>new Date(r.date).getFullYear()))].sort((a,b)=>b-a);
   const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -739,6 +818,25 @@ export default function AdminDashboard() {
     showToast(`"${result.section.section}" added to ${sectionMgmtGrade}.`);
   };
 
+  const handleEditSection = (id, name) => {
+    setEditingSectionId(id);
+    setEditingSectionName(name);
+  };
+
+  const handleSaveSection = async () => {
+    const result = await updateGradeSection(editingSectionId, editingSectionName, sectionMgmtGrade);
+    if (!result.success) { showToast(result.error, "error"); return; }
+    setGradeSections(await getGradeSections());
+    setEditingSectionId(null);
+    setEditingSectionName("");
+    showToast(`Section renamed to "${result.section.section}".`);
+  };
+
+  const handleCancelSectionEdit = () => {
+    setEditingSectionId(null);
+    setEditingSectionName("");
+  };
+
   const handleDeleteSection = async (id, name) => {
     if (!window.confirm(`Remove "${name}" from ${sectionMgmtGrade}?`)) return;
     await deleteGradeSection(id);
@@ -769,18 +867,28 @@ export default function AdminDashboard() {
   };
 
   /* Export helpers */
+  const exportFilteredIncidents = incidents.filter((report) =>
+    exportTypes.includes(report.type || "Others") &&
+    exportStatuses.includes(report.status) &&
+    (exportGradeFilter.length === 0 || exportGradeFilter.includes(report.reporterGrade)) &&
+    (exportGenderFilter.length === 0 || exportGenderFilter.includes(report.reporterSex)) &&
+    (exportSectionFilter.length === 0 || exportSectionFilter.includes(report.reporterSection)) &&
+    (exportMonthFilter.length === 0 || (report.date && exportMonthFilter.includes(MONTH_NAMES[new Date(report.date).getMonth()]))) &&
+    (exportYearFilter.length === 0 || (report.date && exportYearFilter.includes(String(new Date(report.date).getFullYear()))))
+  );
+
   const handleExportCSV = () => {
-    downloadCSV(incidents);
+    downloadCSV(exportFilteredIncidents);
     setExportMenuOpen(false);
   };
 
   const handleExportText = () => {
-    downloadTextReport(incidents);
+    downloadTextReport(exportFilteredIncidents);
     setExportMenuOpen(false);
   };
 
   const handleExportPDF = () => {
-    const data = getAnalyticsData(incidents);
+    const data = getAnalyticsData(exportFilteredIncidents);
     const win = window.open("", "_blank");
     const rows = data.reports.map((r) => `
       <tr>
@@ -871,7 +979,7 @@ export default function AdminDashboard() {
       <div className="main">
 
         {/* TOP BAR */}
-        <div className="header">
+        <div className={`header${profileOpen ? " profile-menu-open" : ""}`}>
           <div className="welcome">
             <h2><span className="welcome-dot" />System Overview</h2>
             <p>
@@ -945,7 +1053,7 @@ export default function AdminDashboard() {
             DASHBOARD TAB
         ══════════════════════════════ */}
         {activeTab === "dashboard" && (
-          <div className="admin-content">
+          <div className="admin-content" ref={adminContentRef}>
             <div className="admin-dashboard-layout">
               <div className="admin-dashboard-main">
                 {/* Summary Cards */}
@@ -1120,8 +1228,21 @@ export default function AdminDashboard() {
                 )}
               </div>
 
-              <aside className="admin-conference-panel">
-                <div className="admin-conference-header">
+              <aside className={`admin-conference-panel${conferencePanelHidden ? " is-scrolled-away" : ""}${conferencePanelPinned ? " is-pinned" : ""}`}>
+                <div
+                  className="admin-conference-header"
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={conferencePanelPinned}
+                  aria-label={conferencePanelPinned ? "Close scheduled conferences panel" : "Keep scheduled conferences panel open"}
+                  onClick={() => setConferencePanelPinned((pinned) => !pinned)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setConferencePanelPinned((pinned) => !pinned);
+                    }
+                  }}
+                >
                   <Calendar size={16} />
                   <span>Scheduled Conferences</span>
                 </div>
@@ -1384,6 +1505,38 @@ export default function AdminDashboard() {
                           </button>
                           {exportMenuOpen && (
                             <div className="analytics-export-menu">
+                              <div className="analytics-export-filter-section">
+                                <ExportChecklist title="Incident type" options={EXPORT_INCIDENT_TYPES} selected={exportTypes} setSelected={setExportTypes} />
+                                <ExportChecklist title="Status" options={EXPORT_STATUSES} selected={exportStatuses} setSelected={setExportStatuses} />
+                                <details className="analytics-export-filter-group">
+                                  <summary>
+                                    <span>Student details</span>
+                                    <small>{[exportGradeFilter, exportGenderFilter, exportSectionFilter].filter((selection) => selection.length > 0).length
+                                      ? `${[exportGradeFilter, exportGenderFilter, exportSectionFilter].filter((selection) => selection.length > 0).length} active`
+                                      : "Any"}</small>
+                                  </summary>
+                                  <div className="analytics-export-filter-group-content">
+                                    <ExportChecklist title="Grade level" options={allGrades} selected={exportGradeFilter} setSelected={setExportGradeFilter} />
+                                    <ExportChecklist title="Gender" options={allGenders} selected={exportGenderFilter} setSelected={setExportGenderFilter} />
+                                    <ExportChecklist title="Section" options={allSections} selected={exportSectionFilter} setSelected={setExportSectionFilter} />
+                                  </div>
+                                </details>
+                                <details className="analytics-export-filter-group">
+                                  <summary>
+                                    <span>Report date</span>
+                                    <small>{[exportMonthFilter, exportYearFilter].filter((selection) => selection.length > 0).length
+                                      ? `${[exportMonthFilter, exportYearFilter].filter((selection) => selection.length > 0).length} active`
+                                      : "Any"}</small>
+                                  </summary>
+                                  <div className="analytics-export-filter-group-content">
+                                    <ExportChecklist title="Month" options={MONTH_NAMES} selected={exportMonthFilter} setSelected={setExportMonthFilter} className="analytics-export-month-checklist" />
+                                    <ExportChecklist title="Year" options={allYears.map(String)} selected={exportYearFilter} setSelected={setExportYearFilter} />
+                                  </div>
+                                </details>
+                                <p className="analytics-export-result-count">
+                                  {exportFilteredIncidents.length} of {incidents.length} incidents selected
+                                </p>
+                              </div>
                               <p className="analytics-export-label">Choose Format</p>
                               <button onClick={handleExportPDF}><FileBarChart size={14} color="#ef4444" /><span><strong>PDF Report</strong><small>Formatted printable report</small></span></button>
                               <button onClick={handleExportCSV}><FileDown size={14} color="#22c55e" /><span><strong>CSV Spreadsheet</strong><small>Excel / Google Sheets compatible</small></span></button>
@@ -2023,34 +2176,64 @@ export default function AdminDashboard() {
               </div>
 
               {/* Sections for the selected grade */}
-              <h4 style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 800, color: "#334155", textTransform: "uppercase", letterSpacing: 0.5 }}>
+              <h4 className="grade-sections-heading">
                 Sections under {sectionMgmtGrade}
               </h4>
 
               {gradeSections.filter((s) => s.grade === sectionMgmtGrade).length === 0 ? (
-                <p style={{ color: "#94a3b8", fontSize: 13, padding: "4px 0 8px" }}>
-                  No sections added yet for {sectionMgmtGrade}. Add one above.
-                </p>
+                <div className="grade-sections-empty">No sections added yet.</div>
               ) : (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {gradeSections.filter((s) => s.grade === sectionMgmtGrade).map((s) => (
-                    <span key={s.id} style={{
-                      display: "inline-flex", alignItems: "center", gap: 6,
-                      fontSize: 13, fontWeight: 700, padding: "6px 8px 6px 14px", borderRadius: 20,
-                      background: "#f0fdf4", color: "#15803d", border: "1.5px solid #bbf7d0",
-                    }}>
-                      {s.section}
-                      <button
-                        onClick={() => handleDeleteSection(s.id, s.section)}
-                        aria-label={`Remove ${s.section}`}
-                        style={{
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          width: 18, height: 18, borderRadius: "50%", border: "none",
-                          background: "rgba(21,128,61,0.12)", color: "inherit", cursor: "pointer", padding: 0,
-                        }}
-                      ><X size={11} /></button>
-                    </span>
-                  ))}
+                <div className="grade-sections-table-wrap">
+                  <table className="grade-sections-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Section Name</th>
+                        <th scope="col">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {gradeSections.filter((s) => s.grade === sectionMgmtGrade).map((s) => (
+                        <tr key={s.id}>
+                          <td>
+                            {editingSectionId === s.id ? (
+                              <input
+                                className="grade-section-edit-input"
+                                aria-label={`Edit section ${s.section}`}
+                                value={editingSectionName}
+                                onChange={(e) => setEditingSectionName(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") handleSaveSection();
+                                  if (e.key === "Escape") handleCancelSectionEdit();
+                                }}
+                                autoFocus
+                              />
+                            ) : s.section}
+                          </td>
+                          <td>
+                            {editingSectionId === s.id ? (
+                              <div className="grade-sections-actions">
+                                <button type="button" className="grade-section-action edit" aria-label="Save section" title="Save" onClick={handleSaveSection}>
+                                  <CheckCircle size={14} /> <span>Save</span>
+                                </button>
+                                <button type="button" className="grade-section-action cancel" aria-label="Cancel section edit" title="Cancel" onClick={handleCancelSectionEdit}>
+                                  <X size={14} /> <span>Cancel</span>
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="grade-sections-actions">
+                                <button type="button" className="grade-section-action edit" aria-label={`Edit ${s.section}`} title="Edit" onClick={() => handleEditSection(s.id, s.section)}>
+                                  <Edit size={14} /> <span>Edit</span>
+                                </button>
+                                <button type="button" className="grade-section-action delete" aria-label={`Delete ${s.section}`} title="Delete" onClick={() => handleDeleteSection(s.id, s.section)}>
+                                  <Trash2 size={14} /> <span>Delete</span>
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
 
