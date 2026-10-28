@@ -1,8 +1,8 @@
 // One-time script: creates demo accounts as real Supabase Auth users, plus
 // their profile rows. Run with: node supabase/seed-demo-accounts.mjs
 // Requires: schema.sql already run, and "Confirm email" turned off in
-// Authentication > Sign In / Up (otherwise signUp() won't return a session
-// and the profile insert will be skipped).
+// Authentication > Sign In / Up. Admin profiles must be added in the
+// Supabase SQL Editor because the public client is not allowed to write them.
 import { createClient } from "@supabase/supabase-js";
 import fs from "fs";
 import path from "path";
@@ -19,12 +19,11 @@ async function seedAdmin() {
   const { data, error } = await supabase.auth.signUp({ email: "admin@cnhs.edu.ph", password: "admin123" });
   if (error) { console.error("Admin signUp failed:", error.message); return; }
   if (!data.session) {
-    console.error("No session after signUp — 'Confirm email' is probably still ON. Turn it off in Authentication > Sign In / Up, then re-run this script.");
+    console.error("Admin signup returned no session. Confirm email may be enabled, or this account may already exist. Check Authentication > Users; if it exists, use its user ID in the admin profile SQL below.");
     return;
   }
-  const { error: insertError } = await supabase.from("admins").insert({ id: data.user.id, email: "admin@cnhs.edu.ph", name: "Administrator" });
-  if (insertError) console.error("Admin profile insert failed:", insertError.message);
-  else console.log("Admin account ready:", data.user.id);
+  console.log("Admin auth account created. Run this in Supabase SQL Editor to allow admin access:");
+  console.log(`insert into public.admins (id, email, name) values ('${data.user.id}', 'admin@cnhs.edu.ph', 'Administrator') on conflict (id) do update set email = excluded.email, name = excluded.name;`);
   await supabase.auth.signOut();
 }
 
