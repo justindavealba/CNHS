@@ -55,8 +55,9 @@ export default function Login() {
   // Admin-managed sections per grade (Grade & Sections page)
   const [gradeSectionsList, setGradeSectionsList] = useState([]);
   useEffect(() => {
+    if (mode !== "register") return;
     getGradeSections().then(setGradeSectionsList).catch(() => setGradeSectionsList([]));
-  }, []);
+  }, [mode]);
   const sectionsForGrade = gradeSectionsList.filter((s) => s.grade === regGrade);
 
   const resetForm = () => {
@@ -86,6 +87,18 @@ export default function Login() {
       return;
     }
     navigate(result.role === "admin" ? "/admindashboard" : "/studentdashboard");
+  };
+
+  const handleDemoLogin = async () => {
+    setError("");
+    setLoading(true);
+    const result = await signIn("demo.admin@cnhs.edu.ph", "Demo123!");
+    setLoading(false);
+    if (!result.success) {
+      setError(result.error);
+      return;
+    }
+    navigate("/admindashboard");
   };
 
   // ── REGISTER ──────────────────────────────────────────────────────────────
@@ -443,6 +456,15 @@ export default function Login() {
                   {loading ? "Signing in…" : "Login"}
                 </button>
               </form>
+
+              <div className="demo-login">
+                <p>Want to explore without connecting to Supabase?</p>
+                <button type="button" onClick={handleDemoLogin} disabled={loading}>
+                  {loading ? "Opening demo…" : "Try the local demo account"}
+                </button>
+                <small>Demo admin · demo.admin@cnhs.edu.ph · Demo123!</small>
+                <small>Demo changes are saved in this browser only.</small>
+              </div>
 
               <button className="back-btn" type="button" onClick={() => navigate("/")}>
                 ← Back to Home

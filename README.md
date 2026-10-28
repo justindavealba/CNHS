@@ -1,4 +1,17 @@
-# React + Vite
+# CNHS Bullying & Incident Reporting System
+
+## Local demo account
+
+Choose **Try the local demo account** on the login screen to open the admin dashboard without connecting to Supabase.
+
+- Email: `demo.admin@cnhs.edu.ph`
+- Password: `Demo123!`
+
+The demo uses sample records and saves changes in the current browser only. It does not create or update Supabase records. Normal student registration and account sign-in still require Supabase configuration.
+
+## Development
+
+Install dependencies with `npm install`, then start the app with `npm run dev`.
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 

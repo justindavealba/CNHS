@@ -36,6 +36,7 @@ async function ensureStudentProfile(user) {
  * Always signs the raw session back out afterward regardless of outcome.
  */
 export async function finalizeEmailConfirmation(user) {
+  if (!supabase) return;
   if (user) {
     await ensureStudentProfile(user);
   }
@@ -60,6 +61,13 @@ function cacheStudentSession(profile) {
  * Returns { success, error, needsConfirmation }.
  */
 export async function signUpStudent({ name, email, password, lrn, age, sex, grade, section }) {
+  if (!supabase) {
+    return {
+      success: false,
+      error: "Supabase is not configured. Student registration requires a Supabase connection.",
+    };
+  }
+
   const { data: lrnTaken } = await supabase.rpc("is_lrn_taken", { check_lrn: lrn });
   if (lrnTaken) {
     return { success: false, error: "This LRN is already registered to another account." };
@@ -126,6 +134,22 @@ export async function signUpStudent({ name, email, password, lrn, age, sex, grad
  * Returns { success, error, role: "admin" | "student" }.
  */
 export async function signIn(email, password) {
+  if (email.toLowerCase() === "demo.admin@cnhs.edu.ph" && password === "Demo123!") {
+    localStorage.setItem("cnhsDemoMode", "true");
+    localStorage.setItem("studentName", "Demo Administrator");
+    localStorage.setItem("studentId", "demo-admin");
+    localStorage.setItem("userRole", "admin");
+    return { success: true, role: "admin", admin: { name: "Demo Administrator" } };
+  }
+
+  localStorage.removeItem("cnhsDemoMode");
+  if (!supabase) {
+    return {
+      success: false,
+      error: "Supabase is not configured. Use the demo account or configure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.",
+    };
+  }
+
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) return { success: false, error: "Invalid email or password." };
 
@@ -165,12 +189,16 @@ export async function signIn(email, password) {
 }
 
 export async function signOut() {
-  await supabase.auth.signOut();
+  if (supabase && !localStorage.getItem("cnhsDemoMode")) {
+    await supabase.auth.signOut();
+  }
   ["studentName", "studentId", "studentLRN", "studentAge", "studentSex", "studentGrade", "studentSection", "email", "userRole"]
     .forEach((k) => localStorage.removeItem(k));
+  localStorage.removeItem("cnhsDemoMode");
 }
 
 export async function getCurrentUserId() {
+  if (!supabase) return null;
   const { data } = await supabase.auth.getUser();
   return data.user?.id || null;
 }

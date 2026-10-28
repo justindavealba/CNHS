@@ -19,10 +19,12 @@ import { supabase } from "../lib/supabaseClient.js";
 // student's first login attempt), then signs the raw session back out.
 export default function EmailConfirmed() {
   const navigate = useNavigate();
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(!supabase);
   const done = useRef(false);
 
   useEffect(() => {
+    if (!supabase) return;
+
     const finish = (user) => {
       if (done.current) return;
       done.current = true;
@@ -74,11 +76,11 @@ export default function EmailConfirmed() {
             <CheckCircle2 size={40} color="#16a34a" />
           </div>
 
-          <h2>You're confirmed!</h2>
+          <h2>{supabase ? "You're confirmed!" : "Email confirmation unavailable"}</h2>
           <p className="login-sub" style={{ marginBottom: 28 }}>
-            Your email address has been verified. An admin still needs to approve
-            your account before you can log in — you'll be able to sign in once
-            that happens.
+            {supabase
+              ? "Your email address has been verified. An admin still needs to approve your account before you can log in — you'll be able to sign in once that happens."
+              : "Supabase is not configured for this deployment. Email confirmation requires a Supabase connection."}
           </p>
 
           <button
